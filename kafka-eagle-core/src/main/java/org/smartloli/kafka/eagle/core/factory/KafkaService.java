@@ -19,8 +19,10 @@ package org.smartloli.kafka.eagle.core.factory;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 
+import org.apache.kafka.common.TopicPartition;
 import org.smartloli.kafka.eagle.common.protocol.BrokersInfo;
 import org.smartloli.kafka.eagle.common.protocol.DisplayInfo;
 import org.smartloli.kafka.eagle.common.protocol.KafkaSqlInfo;
@@ -76,6 +78,9 @@ public interface KafkaService {
 
 	/** Get kafka 0.10.x offset from topic. */
 	public String getKafkaOffset(String clusterAlias);
+	
+	/** Get the data for the topic partition in the specified consumer group */
+	public Map<Integer, Long> getKafkaOffset(String clusterAlias,String group,String topic, Set<Integer> partitionids);
 
 	/** Use kafka console comand to create topic. */
 	public Map<String, Object> create(String clusterAlias, String topicName, String partitions, String replic);
@@ -94,6 +99,9 @@ public interface KafkaService {
 
 	/** Get kafka 0.10.x consumer group & topic information. */
 	public String getKafkaConsumer(String clusterAlias);
+	
+	/** Get kafka 0.10.x consumer group & topic information used for page. */
+	public String getKafkaConsumer(String clusterAlias,DisplayInfo page);
 
 	@Deprecated
 	/** Get kafka consumer information pages. */
@@ -117,8 +125,17 @@ public interface KafkaService {
 	/** Get kafka topic history logsize . */
 	public long getKafkaLogSize(String clusterAlias, String topic, int partitionid);
 
-	/** Get kafka topic real logsize. */
+	/** Get kafka topic history batch logsize. */
+	public Map<TopicPartition, Long> getKafkaLogSize(String clusterAlias, String topic, Set<Integer> partitionids);
+
+	/** Get kafka topic real logsize by partitionid. */
 	public long getKafkaRealLogSize(String clusterAlias, String topic, int partitionid);
+
+	/** Get kafka topic real logsize by partitionid set. */
+	public long getKafkaRealLogSize(String clusterAlias, String topic, Set<Integer> partitionids);
+	
+	/** Get topic producer send logsize records. */
+	public long getKafkaProducerLogSize(String clusterAlias, String topic, Set<Integer> partitionids);
 
 	/** Get kafka sasl topic metadate. */
 	public List<MetadataInfo> findKafkaLeader(String clusterAlias, String topic);
@@ -135,7 +152,10 @@ public interface KafkaService {
 	/** Get kafka history logsize by old version. */
 	public long getLogSize(String clusterAlias, String topic, int partitionid);
 
-	/** Get kafka real logsize by old version. */
+	/** Get kafka history logsize by old version. */
+	public long getLogSize(String clusterAlias, String topic, Set<Integer> partitionids);
+
+	/** Get kafka real logsize by old version partition set. */
 	public long getRealLogSize(String clusterAlias, String topic, int partitionid);
 
 	/** Get topic metadata. */
@@ -146,5 +166,8 @@ public interface KafkaService {
 
 	/** Get kafka os memory. */
 	public long getOSMemory(String host, int port, String property);
+
+	/** Set kafka sasl acl. */
+	public void sasl(Properties props, String clusterAlias);
 
 }

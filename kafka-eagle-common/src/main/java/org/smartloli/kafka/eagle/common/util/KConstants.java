@@ -182,7 +182,14 @@ public class KConstants {
 		public final static int RUNNING = 0;
 		public final static int SHUTDOWN = 1;
 		public final static int PENDING = 2;
+		
+		public final static String RUNNING_STRING = "Running";
+		public final static String SHUTDOWN_STRING = "Shutdown";
+		public final static String PENDING_STRING = "Pending";
 
+		public final static String PRODUCERS = "producers";
+		public final static String CONSUMERS = "consumers";
+		public final static String LAG = "lag";
 	}
 
 	public interface Component {

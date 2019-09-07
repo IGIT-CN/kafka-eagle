@@ -72,6 +72,8 @@ public class MBeanQuartz {
 			int retain = SystemConfigUtils.getIntProperty("kafka.eagle.metrics.retain");
 			metrics.remove(Integer.valueOf(CalendarUtils.getCustomLastDay(retain == 0 ? 7 : retain)));
 			metrics.cleanConsumerTopic(Integer.valueOf(CalendarUtils.getCustomLastDay(retain == 0 ? 7 : retain)));
+			metrics.cleanTopicLogSize(Integer.valueOf(CalendarUtils.getCustomLastDay(retain == 0 ? 7 : retain)));
+			metrics.cleanBScreenConsumerTopic(Integer.valueOf(CalendarUtils.getCustomLastDay(retain == 0 ? 7 : retain)));
 		}
 	}
 
@@ -79,8 +81,18 @@ public class MBeanQuartz {
 		if (SystemConfigUtils.getBooleanProperty("kafka.eagle.metrics.charts")) {
 			String[] clusterAliass = SystemConfigUtils.getPropertyArray("kafka.eagle.zk.cluster.alias", ",");
 			for (String clusterAlias : clusterAliass) {
-				kafkaCluster(clusterAlias);
-				zkCluster(clusterAlias);
+				try {
+					kafkaCluster(clusterAlias);
+				} catch (Exception e) {
+					LOG.error("Get kafka cluster metrics has error, msg is " + e.getCause().getMessage());
+					e.printStackTrace();
+				}
+				try {
+					zkCluster(clusterAlias);
+				} catch (Exception e) {
+					LOG.error("Get zookeeper cluster metrics has error, msg is " + e.getCause().getMessage());
+					e.printStackTrace();
+				}
 			}
 		}
 	}
@@ -214,11 +226,11 @@ public class MBeanQuartz {
 				}
 				broker += ip + ",";
 				try {
-					ZkClusterInfo zkInfo = ZKMetricsUtils.zkClusterInfo(ip, Integer.parseInt(port));
+					ZkClusterInfo zkInfo = ZKMetricsUtils.zkClusterMntrInfo(ip, Integer.parseInt(port));
 					zkAssembly(zkInfo, kpi, kpiInfo);
 				} catch (Exception ex) {
 					ex.printStackTrace();
-					LOG.error("Transcation string to int has error,msg is " + ex.getMessage());
+					LOG.error("Transcation string[" + port + "] to int has error,msg is " + ex.getCause().getMessage());
 				}
 			}
 			kpiInfo.setBroker(broker.length() == 0 ? "unkowns" : broker.substring(0, broker.length() - 1));
