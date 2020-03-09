@@ -15,17 +15,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.smartloli.kafka.eagle.api.email;
+package org.smartloli.kafka.eagle.common.util;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Mail send message interface.
+ * Defined print throw exception message.
  * 
  * @author smartloli.
  *
- *         Created by Jan 17, 2017
+ *         Created by Jan 5, 2020
  */
-public interface MailService {
+public class ThrowExceptionUtils {
 
-	public boolean send(String subject, String address, String content, String attachment);
+	/** Print error message. */
+	public static Logger print(Class<?> clazz) {
+		return LoggerFactory.getLogger(clazz);
+	}
+
+	private ThrowExceptionUtils() {
+
+	}
 
 }

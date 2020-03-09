@@ -18,21 +18,20 @@
 package org.smartloli.kafka.eagle.common.protocol;
 
 /**
- * Definition ClustersInfo information.
+ * Mapper kafka jmx data to MBeanDomain.
  * 
  * @author smartloli.
  *
- *         Created by Oct 28, 2018
+ *         Created by Jul 14, 2017
  */
-public class ClustersInfo extends BaseProtocol {
+public class MBeanOfflineInfo extends BaseProtocol {
 
-	private int id;
-	private String type;
-	private String cluster;// ClusterAlias
-	private String server;
-	private String owner;
-	private String created;
-	private String modify;
+	private String cluster;
+	private String key;
+	private String fifteenMinute;
+	private String fiveMinute;
+	private String meanRate;
+	private String oneMinute;
 
 	public String getCluster() {
 		return cluster;
@@ -42,52 +41,44 @@ public class ClustersInfo extends BaseProtocol {
 		this.cluster = cluster;
 	}
 
-	public String getServer() {
-		return server;
+	public String getKey() {
+		return key;
 	}
 
-	public void setServer(String server) {
-		this.server = server;
+	public void setKey(String key) {
+		this.key = key;
 	}
 
-	public String getCreated() {
-		return created;
+	public String getFifteenMinute() {
+		return fifteenMinute;
 	}
 
-	public void setCreated(String created) {
-		this.created = created;
+	public void setFifteenMinute(String fifteenMinute) {
+		this.fifteenMinute = fifteenMinute;
 	}
 
-	public String getModify() {
-		return modify;
+	public String getFiveMinute() {
+		return fiveMinute;
 	}
 
-	public void setModify(String modify) {
-		this.modify = modify;
+	public void setFiveMinute(String fiveMinute) {
+		this.fiveMinute = fiveMinute;
 	}
 
-	public String getOwner() {
-		return owner;
+	public String getMeanRate() {
+		return meanRate;
 	}
 
-	public void setOwner(String owner) {
-		this.owner = owner;
+	public void setMeanRate(String meanRate) {
+		this.meanRate = meanRate;
 	}
 
-	public int getId() {
-		return id;
+	public String getOneMinute() {
+		return oneMinute;
 	}
 
-	public void setId(int id) {
-		this.id = id;
-	}
-
-	public String getType() {
-		return type;
-	}
-
-	public void setType(String type) {
-		this.type = type;
+	public void setOneMinute(String oneMinute) {
+		this.oneMinute = oneMinute;
 	}
 
 }

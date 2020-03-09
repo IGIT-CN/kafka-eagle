@@ -15,17 +15,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.smartloli.kafka.eagle.api.email;
+package org.smartloli.kafka.eagle.common.util;
+
+import java.util.Date;
+
+import org.quartz.Job;
+import org.quartz.JobExecutionContext;
+import org.quartz.JobExecutionException;
+import org.smartloli.kafka.eagle.common.protocol.alarm.queue.BaseJobContext;
+import org.smartloli.kafka.eagle.common.util.KConstants.AlarmQueue;
 
 /**
- * Mail provider MailService visitor enter.
+ * TODO
  * 
  * @author smartloli.
  *
- *         Created by Jan 17, 2017
- * 
- * @see org.smartloli.kafka.eagle.api.email.MailService
+ *         Created by Oct 25, 2019
  */
-public interface MailProvider {
-	public MailService create();
+public class TestJob implements Job {
+	@Override
+	public void execute(JobExecutionContext arg0) throws JobExecutionException {
+		BaseJobContext bjc = (BaseJobContext) arg0.getJobDetail().getJobDataMap().get(AlarmQueue.JOB_PARAMS);
+		System.out.println("kafka eagle quartz job, date : [" + new Date().toString() + "],[" + bjc + "]");
+	}
 }

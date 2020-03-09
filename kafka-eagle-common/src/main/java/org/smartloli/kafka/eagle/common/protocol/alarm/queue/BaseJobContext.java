@@ -15,22 +15,36 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.smartloli.kafka.eagle.api.email;
+package org.smartloli.kafka.eagle.common.protocol.alarm.queue;
+
+import org.smartloli.kafka.eagle.common.protocol.BaseProtocol;
 
 /**
- * Mail factory implements MailProvider service.
+ * Defind quartz job context schema.
  * 
  * @author smartloli.
  *
- *         Created by Jan 17, 2017
- * 
- * @see org.smartloli.kafka.eagle.factory.MailProvider
+ *         Created by Oct 27, 2019
  */
-public class MailFactory implements MailProvider {
+public class BaseJobContext extends BaseProtocol {
 
-	@Override
-	public MailService create() {
-		return new MailServiceImpl();
+	private String data;
+	private String url;
+
+	public String getData() {
+		return data;
+	}
+
+	public void setData(String data) {
+		this.data = data;
+	}
+
+	public String getUrl() {
+		return url;
+	}
+
+	public void setUrl(String url) {
+		this.url = url;
 	}
 
 }

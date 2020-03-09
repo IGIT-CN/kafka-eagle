@@ -26,8 +26,10 @@ import org.smartloli.kafka.eagle.common.protocol.BrokersInfo;
 import org.smartloli.kafka.eagle.common.protocol.MBeanInfo;
 import org.smartloli.kafka.eagle.common.protocol.MetadataInfo;
 import org.smartloli.kafka.eagle.common.protocol.PartitionsInfo;
+import org.smartloli.kafka.eagle.common.protocol.bscreen.BScreenBarInfo;
 import org.smartloli.kafka.eagle.common.protocol.topic.TopicConfig;
 import org.smartloli.kafka.eagle.common.protocol.topic.TopicLogSize;
+import org.smartloli.kafka.eagle.common.protocol.topic.TopicSqlHistory;
 import org.smartloli.kafka.eagle.common.util.CalendarUtils;
 import org.smartloli.kafka.eagle.common.util.KConstants.Kafka;
 import org.smartloli.kafka.eagle.common.util.KConstants.MBean;
@@ -130,7 +132,7 @@ public class TopicServiceImpl implements TopicService {
 	public String getTopicProperties(String clusterAlias, String name) {
 		JSONArray topics = new JSONArray();
 		int offset = 0;
-		for (String key : Topic.KEYS) {
+		for (String key : Topic.getTopicConfigKeys()) {
 			if (name != null) {
 				JSONObject topic = new JSONObject();
 				if (key.contains(name)) {
@@ -166,7 +168,19 @@ public class TopicServiceImpl implements TopicService {
 
 	/** Get topic list. */
 	public List<PartitionsInfo> list(String clusterAlias, Map<String, Object> params) {
-		return brokerService.topicRecords(clusterAlias, params);
+		List<PartitionsInfo> topicRecords = brokerService.topicRecords(clusterAlias, params);
+		for (PartitionsInfo partitionInfo : topicRecords) {
+			Map<String, Object> spread = new HashMap<>();
+			spread.put("cluster", clusterAlias);
+			spread.put("topic", partitionInfo.getTopic());
+			spread.put("tkey", Topic.BROKER_SPREAD);
+			partitionInfo.setBrokersSpread(topicDao.readBrokerPerformance(spread) == null ? 0 : topicDao.readBrokerPerformance(spread).getTvalue());
+			spread.put("tkey", Topic.BROKER_SKEWED);
+			partitionInfo.setBrokersSkewed(topicDao.readBrokerPerformance(spread) == null ? 0 : topicDao.readBrokerPerformance(spread).getTvalue());
+			spread.put("tkey", Topic.BROKER_LEADER_SKEWED);
+			partitionInfo.setBrokersLeaderSkewed(topicDao.readBrokerPerformance(spread) == null ? 0 : topicDao.readBrokerPerformance(spread).getTvalue());
+		}
+		return topicRecords;
 	}
 
 	/** Get topic partition numbers. */
@@ -263,6 +277,74 @@ public class TopicServiceImpl implements TopicService {
 			arrays.add(object);
 		}
 		return arrays.toJSONString();
+	}
+
+	@Override
+	public String getSelectTopics(String clusterAlias, String prefixTopic) {
+		return brokerService.topicListParams(clusterAlias, prefixTopic);
+	}
+
+	@Override
+	public String getSelectTopicsLogSize(String clusterAlias, Map<String, Object> params) {
+		JSONArray array = new JSONArray();
+		List<BScreenBarInfo> bsProducers = topicDao.queryProducerHistoryBar(params);
+		Map<String, Object> bsMaps = new HashMap<>();
+		for (BScreenBarInfo bsProducer : bsProducers) {
+			if (bsProducer != null) {
+				bsMaps.put(bsProducer.getTm(), bsProducer.getValue());
+			}
+		}
+		int index = 0;
+		try {
+			index = CalendarUtils.getDiffDay(params.get("stime").toString(), params.get("etime").toString());
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		for (int i = index; i >= 0; i--) {
+			String tm = CalendarUtils.getCustomLastDay(i);
+			if (bsMaps.containsKey(tm)) {
+				JSONObject object = new JSONObject();
+				object.put("x", CalendarUtils.getCustomLastDay("yyyy-MM-dd", i));
+				object.put("y", bsMaps.get(tm).toString());
+				array.add(object);
+			} else {
+				JSONObject object = new JSONObject();
+				object.put("x", CalendarUtils.getCustomLastDay("MM-dd", i));
+				object.put("y", 0);
+				array.add(object);
+			}
+		}
+		return array.toJSONString();
+	}
+
+	@Override
+	public int writeTopicSqlHistory(List<TopicSqlHistory> topicSqlHistorys) {
+		return topicDao.writeTopicSqlHistory(topicSqlHistorys);
+	}
+
+	@Override
+	public List<TopicSqlHistory> readTopicSqlHistory(Map<String, Object> params) {
+		return topicDao.readTopicSqlHistory(params);
+	}
+
+	@Override
+	public List<TopicSqlHistory> readTopicSqlHistoryByAdmin(Map<String, Object> params) {
+		return topicDao.readTopicSqlHistoryByAdmin(params);
+	}
+
+	@Override
+	public long countTopicSqlHistory(Map<String, Object> params) {
+		return topicDao.countTopicSqlHistory(params);
+	}
+
+	@Override
+	public long countTopicSqlHistoryByAdmin(Map<String, Object> params) {
+		return topicDao.countTopicSqlHistoryByAdmin(params);
+	}
+
+	@Override
+	public TopicSqlHistory findTopicSqlByID(Map<String, Object> params) {
+		return topicDao.findTopicSqlByID(params);
 	}
 
 }

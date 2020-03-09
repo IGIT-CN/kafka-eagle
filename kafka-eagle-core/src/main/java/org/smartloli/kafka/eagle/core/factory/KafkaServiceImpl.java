@@ -22,7 +22,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -48,6 +47,7 @@ import org.apache.kafka.clients.admin.ListConsumerGroupOffsetsOptions;
 import org.apache.kafka.clients.admin.ListConsumerGroupOffsetsResult;
 import org.apache.kafka.clients.admin.ListConsumerGroupsResult;
 import org.apache.kafka.clients.admin.MemberDescription;
+import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
@@ -62,7 +62,7 @@ import org.apache.kafka.common.serialization.StringSerializer;
 import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.smartloli.kafka.eagle.common.constant.JmxConstants.KafkaServer;
+import org.smartloli.kafka.eagle.common.constant.JmxConstants.BrokerServer;
 import org.smartloli.kafka.eagle.common.constant.JmxConstants.KafkaServer8;
 import org.smartloli.kafka.eagle.common.constant.OdpsSqlParser;
 import org.smartloli.kafka.eagle.common.protocol.BrokersInfo;
@@ -72,7 +72,6 @@ import org.smartloli.kafka.eagle.common.protocol.KafkaSqlInfo;
 import org.smartloli.kafka.eagle.common.protocol.MetadataInfo;
 import org.smartloli.kafka.eagle.common.protocol.OffsetZkInfo;
 import org.smartloli.kafka.eagle.common.protocol.OwnerInfo;
-import org.smartloli.kafka.eagle.common.protocol.PartitionsInfo;
 import org.smartloli.kafka.eagle.common.util.CalendarUtils;
 import org.smartloli.kafka.eagle.common.util.JMXFactoryUtils;
 import org.smartloli.kafka.eagle.common.util.KConstants.CollectorType;
@@ -80,14 +79,11 @@ import org.smartloli.kafka.eagle.common.util.KConstants.Kafka;
 import org.smartloli.kafka.eagle.common.util.KafkaPartitioner;
 import org.smartloli.kafka.eagle.common.util.KafkaZKPoolUtils;
 import org.smartloli.kafka.eagle.common.util.SystemConfigUtils;
-import org.smartloli.kafka.eagle.core.factory.v2.BrokerService;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 
-import kafka.admin.RackAwareMode;
-import kafka.zk.AdminZkClient;
 import kafka.zk.KafkaZkClient;
 import scala.Option;
 import scala.Tuple2;
@@ -109,7 +105,7 @@ public class KafkaServiceImpl implements KafkaService {
 
 	private final String BROKER_IDS_PATH = "/brokers/ids";
 	private final String BROKER_TOPICS_PATH = "/brokers/topics";
-	private final String DELETE_TOPICS_PATH = "/admin/delete_topics";
+	// private final String DELETE_TOPICS_PATH = "/admin/delete_topics";
 	private final String CONSUMERS_PATH = "/consumers";
 	private final String OWNERS = "/owners";
 	private final String TOPIC_ISR = "/brokers/topics/%s/partitions/%s/state";
@@ -264,63 +260,6 @@ public class KafkaServiceImpl implements KafkaService {
 			zkc = null;
 		}
 		return targets;
-	}
-
-	/**
-	 * Get all topic info from zookeeper, Deprecated this method in the v1.3.4
-	 * and replace {@link BrokerService.topicRecords} method.
-	 */
-	@Deprecated
-	public String getAllPartitions(String clusterAlias) {
-		KafkaZkClient zkc = kafkaZKPool.getZkClient(clusterAlias);
-		List<PartitionsInfo> targets = new ArrayList<PartitionsInfo>();
-		if (zkc.pathExists(BROKER_TOPICS_PATH)) {
-			Seq<String> subBrokerTopicsPaths = zkc.getChildren(BROKER_TOPICS_PATH);
-			List<String> topics = JavaConversions.seqAsJavaList(subBrokerTopicsPaths);
-			int id = 0;
-			for (String topic : topics) {
-				try {
-					Tuple2<Option<byte[]>, Stat> tuple = zkc.getDataAndStat(BROKER_TOPICS_PATH + "/" + topic);
-					PartitionsInfo partition = new PartitionsInfo();
-					partition.setId(++id);
-					partition.setCreated(CalendarUtils.convertUnixTime2Date(tuple._2.getCtime()));
-					partition.setModify(CalendarUtils.convertUnixTime2Date(tuple._2.getMtime()));
-					partition.setTopic(topic);
-					String tupleString = new String(tuple._1.get());
-					JSONObject partitionObject = JSON.parseObject(tupleString).getJSONObject("partitions");
-					partition.setPartitionNumbers(partitionObject.size());
-					partition.setPartitions(partitionObject.keySet());
-					targets.add(partition);
-				} catch (Exception ex) {
-					LOG.error(ex.getMessage());
-				}
-			}
-		}
-		if (zkc != null) {
-			kafkaZKPool.release(clusterAlias, zkc);
-			zkc = null;
-		}
-		// Sort topic by create time.
-		Collections.sort(targets, new Comparator<PartitionsInfo>() {
-			public int compare(PartitionsInfo arg0, PartitionsInfo arg1) {
-				try {
-					long hits0 = CalendarUtils.convertDate2UnixTime(arg0.getCreated());
-					long hits1 = CalendarUtils.convertDate2UnixTime(arg1.getCreated());
-
-					if (hits1 > hits0) {
-						return 1;
-					} else if (hits1 == hits0) {
-						return 0;
-					} else {
-						return -1;
-					}
-				} catch (Exception e) {
-					LOG.error("Convert date to unix time has error,msg is " + e.getMessage());
-					return 0;
-				}
-			}
-		});
-		return targets.toString();
 	}
 
 	/** Obtaining kafka consumer information from zookeeper. */
@@ -518,13 +457,23 @@ public class KafkaServiceImpl implements KafkaService {
 			targets.put("info", "replication factor: " + replic + " larger than available brokers: " + brokers);
 			return targets;
 		}
-		KafkaZkClient zkc = kafkaZKPool.getZkClient(clusterAlias);
-		AdminZkClient adminZkCli = new AdminZkClient(zkc);
-		adminZkCli.createTopic(topicName, Integer.parseInt(partitions), Integer.parseInt(replic), new Properties(), RackAwareMode.Enforced$.MODULE$);
-		if (zkc != null) {
-			kafkaZKPool.release(clusterAlias, zkc);
-			zkc = null;
-			adminZkCli = null;
+		Properties prop = new Properties();
+		prop.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, parseBrokerServer(clusterAlias));
+
+		if (SystemConfigUtils.getBooleanProperty(clusterAlias + ".kafka.eagle.sasl.enable")) {
+			sasl(prop, clusterAlias);
+		}
+
+		AdminClient adminClient = null;
+		try {
+			adminClient = AdminClient.create(prop);
+			NewTopic newTopic = new NewTopic(topicName, Integer.valueOf(partitions), Short.valueOf(replic));
+			adminClient.createTopics(Collections.singleton(newTopic)).all().get();
+		} catch (Exception e) {
+			LOG.info("Create kafka topic has error, msg is " + e.getMessage());
+			e.printStackTrace();
+		} finally {
+			adminClient.close();
 		}
 
 		targets.put("status", "success");
@@ -535,19 +484,24 @@ public class KafkaServiceImpl implements KafkaService {
 	/** Delete topic to kafka cluster. */
 	public Map<String, Object> delete(String clusterAlias, String topicName) {
 		Map<String, Object> targets = new HashMap<String, Object>();
-		KafkaZkClient zkc = kafkaZKPool.getZkClient(clusterAlias);
-		AdminZkClient adminZkCli = new AdminZkClient(zkc);
-		adminZkCli.deleteTopic(topicName);
-		boolean dt = zkc.deleteRecursive(DELETE_TOPICS_PATH + "/" + topicName);
-		boolean bt = zkc.deleteRecursive(BROKER_TOPICS_PATH + "/" + topicName);
-		if (dt && bt) {
-			targets.put("status", "success");
-		} else {
-			targets.put("status", "failed");
+		Properties prop = new Properties();
+		prop.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, parseBrokerServer(clusterAlias));
+
+		if (SystemConfigUtils.getBooleanProperty(clusterAlias + ".kafka.eagle.sasl.enable")) {
+			sasl(prop, clusterAlias);
 		}
-		if (zkc != null) {
-			kafkaZKPool.release(clusterAlias, zkc);
-			zkc = null;
+
+		AdminClient adminClient = null;
+		try {
+			adminClient = AdminClient.create(prop);
+			adminClient.deleteTopics(Collections.singleton(topicName)).all().get();
+			targets.put("status", "success");
+		} catch (Exception e) {
+			LOG.info("Delete kafka topic has error, msg is " + e.getMessage());
+			e.printStackTrace();
+			targets.put("status", "failed");
+		} finally {
+			adminClient.close();
 		}
 		return targets;
 	}
@@ -1101,7 +1055,7 @@ public class KafkaServiceImpl implements KafkaService {
 		}
 		return realLogSize;
 	}
-	
+
 	/** Get kafka 0.10.x topic real logsize by partitionid set. */
 	public long getKafkaRealLogSize(String clusterAlias, String topic, Set<Integer> partitionids) {
 		long realLogSize = 0L;
@@ -1187,9 +1141,9 @@ public class KafkaServiceImpl implements KafkaService {
 			connector = JMXFactoryUtils.connectWithTimeout(jmxSeriverUrl, 30, TimeUnit.SECONDS);
 			MBeanServerConnection mbeanConnection = connector.getMBeanServerConnection();
 			if (CollectorType.KAFKA.equals(SystemConfigUtils.getProperty(clusterAlias + ".kafka.eagle.offset.storage"))) {
-				version = mbeanConnection.getAttribute(new ObjectName(String.format(KafkaServer.version, ids)), KafkaServer.value).toString();
+				version = mbeanConnection.getAttribute(new ObjectName(String.format(BrokerServer.BROKER_VERSION.getValue(), ids)), BrokerServer.BROKER_VERSION_VALUE.getValue()).toString();
 			} else {
-				version = mbeanConnection.getAttribute(new ObjectName(KafkaServer8.version), KafkaServer8.value).toString();
+				version = mbeanConnection.getAttribute(new ObjectName(KafkaServer8.VERSION.getValue()), KafkaServer8.VALUE.getValue()).toString();
 			}
 		} catch (Exception ex) {
 			LOG.error("Get kafka version from jmx has error, msg is " + ex.getMessage());
@@ -1322,7 +1276,7 @@ public class KafkaServiceImpl implements KafkaService {
 		long logSize = 0L;
 		try {
 			MBeanServerConnection mbeanConnection = connector.getMBeanServerConnection();
-			logSize = Long.parseLong(mbeanConnection.getAttribute(new ObjectName(String.format(KafkaServer8.endLogSize, topic, partitionid)), KafkaServer8.value).toString());
+			logSize = Long.parseLong(mbeanConnection.getAttribute(new ObjectName(String.format(KafkaServer8.END_LOG_SIZE.getValue(), topic, partitionid)), KafkaServer8.VALUE.getValue()).toString());
 		} catch (Exception ex) {
 			LOG.error("Get kafka old version logsize & parse has error, msg is " + ex.getMessage());
 			ex.printStackTrace();
@@ -1360,7 +1314,7 @@ public class KafkaServiceImpl implements KafkaService {
 		try {
 			MBeanServerConnection mbeanConnection = connector.getMBeanServerConnection();
 			for (int partitionid : partitionids) {
-				logSize += Long.parseLong(mbeanConnection.getAttribute(new ObjectName(String.format(KafkaServer8.endLogSize, topic, partitionid)), KafkaServer8.value).toString());
+				logSize += Long.parseLong(mbeanConnection.getAttribute(new ObjectName(String.format(KafkaServer8.END_LOG_SIZE.getValue(), topic, partitionid)), KafkaServer8.VALUE.getValue()).toString());
 			}
 		} catch (Exception ex) {
 			LOG.error("Get kafka old version logsize & parse has error, msg is " + ex.getMessage());
@@ -1398,8 +1352,8 @@ public class KafkaServiceImpl implements KafkaService {
 		long logSize = 0L;
 		try {
 			MBeanServerConnection mbeanConnection = connector.getMBeanServerConnection();
-			long endLogSize = Long.parseLong(mbeanConnection.getAttribute(new ObjectName(String.format(KafkaServer8.endLogSize, topic, partitionid)), KafkaServer8.value).toString());
-			long startLogSize = Long.parseLong(mbeanConnection.getAttribute(new ObjectName(String.format(KafkaServer8.startLogSize, topic, partitionid)), KafkaServer8.value).toString());
+			long endLogSize = Long.parseLong(mbeanConnection.getAttribute(new ObjectName(String.format(KafkaServer8.END_LOG_SIZE.getValue(), topic, partitionid)), KafkaServer8.VALUE.getValue()).toString());
+			long startLogSize = Long.parseLong(mbeanConnection.getAttribute(new ObjectName(String.format(KafkaServer8.START_LOG_SIZE.getValue(), topic, partitionid)), KafkaServer8.VALUE.getValue()).toString());
 			logSize = endLogSize - startLogSize;
 		} catch (Exception ex) {
 			LOG.error("Get kafka old version logsize & parse has error, msg is " + ex.getMessage());
@@ -1456,7 +1410,7 @@ public class KafkaServiceImpl implements KafkaService {
 			JMXServiceURL jmxSeriverUrl = new JMXServiceURL(String.format(JMX, host + ":" + port));
 			connector = JMXFactoryUtils.connectWithTimeout(jmxSeriverUrl, 30, TimeUnit.SECONDS);
 			MBeanServerConnection mbeanConnection = connector.getMBeanServerConnection();
-			String memorySize = mbeanConnection.getAttribute(new ObjectName(KafkaServer.OS.type), property).toString();
+			String memorySize = mbeanConnection.getAttribute(new ObjectName(BrokerServer.JMX_PERFORMANCE_TYPE.getValue()), property).toString();
 			memory = Long.parseLong(memorySize);
 		} catch (Exception ex) {
 			LOG.error("Get kafka os memory from jmx has error, msg is " + ex.getMessage());

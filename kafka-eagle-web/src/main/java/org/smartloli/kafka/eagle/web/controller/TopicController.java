@@ -17,9 +17,12 @@
  */
 package org.smartloli.kafka.eagle.web.controller;
 
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -27,20 +30,29 @@ import javax.servlet.http.HttpSession;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.kafka.clients.admin.ConfigEntry;
+import org.apache.shiro.SecurityUtils;
 import org.apache.shiro.authz.annotation.RequiresPermissions;
 import org.smartloli.kafka.eagle.common.protocol.MetadataInfo;
 import org.smartloli.kafka.eagle.common.protocol.PartitionsInfo;
 import org.smartloli.kafka.eagle.common.protocol.topic.TopicConfig;
+import org.smartloli.kafka.eagle.common.protocol.topic.TopicMockMessage;
+import org.smartloli.kafka.eagle.common.protocol.topic.TopicSqlHistory;
+import org.smartloli.kafka.eagle.common.util.CalendarUtils;
 import org.smartloli.kafka.eagle.common.util.KConstants;
 import org.smartloli.kafka.eagle.common.util.KConstants.Kafka;
+import org.smartloli.kafka.eagle.common.util.KConstants.Role;
 import org.smartloli.kafka.eagle.common.util.KConstants.Topic;
 import org.smartloli.kafka.eagle.common.util.SystemConfigUtils;
 import org.smartloli.kafka.eagle.core.factory.KafkaFactory;
 import org.smartloli.kafka.eagle.core.factory.KafkaService;
+import org.smartloli.kafka.eagle.core.factory.v2.BrokerFactory;
+import org.smartloli.kafka.eagle.core.factory.v2.BrokerService;
+import org.smartloli.kafka.eagle.web.pojo.Signiner;
 import org.smartloli.kafka.eagle.web.service.TopicService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -49,6 +61,7 @@ import org.springframework.web.servlet.ModelAndView;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.google.common.base.Strings;
 
 /**
  * Kafka topic controller to viewer data.
@@ -68,6 +81,9 @@ public class TopicController {
 
 	/** Kafka service interface. */
 	private KafkaService kafkaService = new KafkaFactory().create();
+
+	/** BrokerService interface. */
+	private BrokerService brokerService = new BrokerFactory().create();
 
 	/** Topic create viewer. */
 	@RequiresPermissions("/topic/create")
@@ -178,6 +194,16 @@ public class TopicController {
 			object.put("leader", metadata.getLeader());
 			object.put("replicas", metadata.getReplicas());
 			object.put("isr", metadata.getIsr());
+			if (metadata.isPreferredLeader()) {
+				object.put("preferred_leader", "<a class='btn btn-success btn-xs'>true</a>");
+			} else {
+				object.put("preferred_leader", "<a class='btn btn-danger btn-xs'>false</a>");
+			}
+			if (metadata.isUnderReplicated()) {
+				object.put("under_replicated", "<a class='btn btn-danger btn-xs'>true</a>");
+			} else {
+				object.put("under_replicated", "<a class='btn btn-success btn-xs'>false</a>");
+			}
 			aaDatas.add(object);
 		}
 
@@ -283,14 +309,14 @@ public class TopicController {
 		}
 	}
 
-	/***/
-	@RequestMapping(value = "/topic/mock/send/message/{topic}/ajax", method = RequestMethod.GET)
-	public void topicMockSend(@PathVariable("topic") String topic, @RequestParam("message") String message, HttpServletResponse response, HttpServletRequest request) {
+	/** Send mock data to topic. */
+	@RequestMapping(value = "/topic/mock/send/message/topic/ajax", method = RequestMethod.POST)
+	public void topicMockSend(@RequestBody TopicMockMessage topicMockMessage, HttpServletResponse response, HttpServletRequest request) {
 		try {
 			HttpSession session = request.getSession();
 			String clusterAlias = session.getAttribute(KConstants.SessionAlias.CLUSTER_ALIAS).toString();
 			JSONObject object = new JSONObject();
-			object.put("status", topicService.mockSendMsg(clusterAlias, topic, message));
+			object.put("status", topicService.mockSendMsg(clusterAlias, topicMockMessage.getTopic(), topicMockMessage.getMessage()));
 			byte[] output = object.toJSONString().getBytes();
 			BaseController.response(output, response);
 		} catch (Exception ex) {
@@ -320,6 +346,7 @@ public class TopicController {
 
 		HttpSession session = request.getSession();
 		String clusterAlias = session.getAttribute(KConstants.SessionAlias.CLUSTER_ALIAS).toString();
+		Signiner signiner = (Signiner) session.getAttribute(KConstants.Login.SESSION_USER);
 
 		Map<String, Object> map = new HashMap<>();
 		map.put("search", search);
@@ -337,14 +364,50 @@ public class TopicController {
 			JSONObject object = new JSONObject();
 			object.put("id", partition.getId());
 			object.put("topic", "<a href='/ke/topic/meta/" + partition.getTopic() + "/' target='_blank'>" + partition.getTopic() + "</a>");
-			object.put("partitions", partition.getPartitions().size() > Topic.PARTITION_LENGTH ? partition.getPartitions().toString().substring(0, Topic.PARTITION_LENGTH) + "..." : partition.getPartitions().toString());
-			object.put("partitionNumbers", partition.getPartitionNumbers());
+			object.put("partitions", partition.getPartitionNumbers());
+			try {
+				long brokerSpread = partition.getBrokersSpread();
+				if (brokerSpread < Topic.TOPIC_BROKER_SPREAD_ERROR) {
+					object.put("brokerSpread", "<a class='btn btn-danger btn-xs'>" + brokerSpread + "%</a>");
+				} else if (brokerSpread >= Topic.TOPIC_BROKER_SPREAD_ERROR && brokerSpread < Topic.TOPIC_BROKER_SPREAD_NORMAL) {
+					object.put("brokerSpread", "<a class='btn btn-warning btn-xs'>" + brokerSpread + "%</a>");
+				} else if (brokerSpread >= Topic.TOPIC_BROKER_SPREAD_NORMAL) {
+					object.put("brokerSpread", "<a class='btn btn-success btn-xs'>" + brokerSpread + "%</a>");
+				} else {
+					object.put("brokerSpread", "<a class='btn btn-primary btn-xs'>" + brokerSpread + "%</a>");
+				}
+
+				long brokerSkewed = partition.getBrokersSkewed();
+				if (brokerSkewed >= Topic.TOPIC_BROKER_SKEW_ERROR) {
+					object.put("brokerSkewed", "<a class='btn btn-danger btn-xs'>" + brokerSkewed + "%</a>");
+				} else if (brokerSkewed > Topic.TOPIC_BROKER_SKEW_NORMAL && brokerSkewed < Topic.TOPIC_BROKER_SKEW_ERROR) {
+					object.put("brokerSkewed", "<a class='btn btn-warning btn-xs'>" + brokerSkewed + "%</a>");
+				} else if (brokerSkewed <= Topic.TOPIC_BROKER_SKEW_NORMAL) {
+					object.put("brokerSkewed", "<a class='btn btn-success btn-xs'>" + brokerSkewed + "%</a>");
+				} else {
+					object.put("brokerSkewed", "<a class='btn btn-primary btn-xs'>" + brokerSkewed + "%</a>");
+				}
+
+				long brokerLeaderSkewed = partition.getBrokersLeaderSkewed();
+				if (brokerLeaderSkewed >= Topic.TOPIC_BROKER_LEADER_SKEW_ERROR) {
+					object.put("brokerLeaderSkewed", "<a class='btn btn-danger btn-xs'>" + brokerLeaderSkewed + "%</a>");
+				} else if (brokerSkewed > Topic.TOPIC_BROKER_LEADER_SKEW_NORMAL && brokerLeaderSkewed < Topic.TOPIC_BROKER_LEADER_SKEW_ERROR) {
+					object.put("brokerLeaderSkewed", "<a class='btn btn-warning btn-xs'>" + brokerLeaderSkewed + "%</a>");
+				} else if (brokerSkewed <= Topic.TOPIC_BROKER_LEADER_SKEW_NORMAL) {
+					object.put("brokerLeaderSkewed", "<a class='btn btn-success btn-xs'>" + brokerLeaderSkewed + "%</a>");
+				} else {
+					object.put("brokerLeaderSkewed", "<a class='btn btn-primary btn-xs'>" + brokerLeaderSkewed + "%</a>");
+				}
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
 			object.put("created", partition.getCreated());
 			object.put("modify", partition.getModify());
-			if (Kafka.CONSUMER_OFFSET_TOPIC.equals(partition.getTopic())) {
-				object.put("operate", "");
+			if (Role.ADMIN.equals(signiner.getUsername())) {
+				object.put("operate", "<div class='btn-group'><button class='btn btn-primary btn-xs dropdown-toggle' type='button' data-toggle='dropdown' aria-haspopup='true' aria-expanded='false'>Action <span class='caret'></span></button><ul class='dropdown-menu dropdown-menu-right'><li><a name='topic_modify' href='#" + partition.getTopic()
+						+ "'><i class='fa fa-fw fa-edit'></i>Modify</a></li><li><a href='#" + partition.getTopic() + "' name='topic_remove'><i class='fa fa-fw fa-minus-circle'></i>Remove</a></li></ul></div>");
 			} else {
-				object.put("operate", "<a name='remove' href='#" + partition.getTopic() + "' class='btn btn-danger btn-xs'>Remove</a>");
+				object.put("operate", "");
 			}
 			aaDatas.add(object);
 		}
@@ -356,6 +419,50 @@ public class TopicController {
 		target.put("aaData", aaDatas);
 		try {
 			byte[] output = target.toJSONString().getBytes();
+			BaseController.response(output, response);
+		} catch (Exception ex) {
+			ex.printStackTrace();
+		}
+	}
+
+	/** Get select topic datasets by ajax. */
+	@RequestMapping(value = "/topic/list/select/ajax", method = RequestMethod.POST)
+	public void topicSelectListAjax(HttpServletResponse response, HttpServletRequest request) {
+		try {
+			String topic = request.getParameter("topic");
+			HttpSession session = request.getSession();
+			String clusterAlias = session.getAttribute(KConstants.SessionAlias.CLUSTER_ALIAS).toString();
+			byte[] output = topicService.getSelectTopics(clusterAlias, topic).getBytes();
+			BaseController.response(output, response);
+		} catch (Exception ex) {
+			ex.printStackTrace();
+		}
+	}
+
+	/** Get select filter topic datasets by ajax. */
+	@RequestMapping(value = "/topic/list/filter/select/ajax", method = RequestMethod.GET)
+	public void topicSelectFilterListAjax(HttpServletResponse response, HttpServletRequest request) {
+		try {
+			String topics = request.getParameter("topics");
+			String stime = request.getParameter("stime");
+			String etime = request.getParameter("etime");
+			HttpSession session = request.getSession();
+			String clusterAlias = session.getAttribute(KConstants.SessionAlias.CLUSTER_ALIAS).toString();
+
+			Map<String, Object> params = new HashMap<>();
+			params.put("cluster", clusterAlias);
+			params.put("stime", stime);
+			params.put("etime", etime);
+			if (!Strings.isNullOrEmpty(topics)) {
+				String[] topicStrs = topics.split(",");
+				Set<String> topicSets = new HashSet<>();
+				for (String topic : topicStrs) {
+					topicSets.add(topic);
+				}
+				params.put("topics", topicSets);
+			}
+
+			byte[] output = topicService.getSelectTopicsLogSize(clusterAlias, params).getBytes();
 			BaseController.response(output, response);
 		} catch (Exception ex) {
 			ex.printStackTrace();
@@ -396,6 +503,20 @@ public class TopicController {
 				mav.setViewName("redirect:/errors/500");
 			}
 		} else {
+			mav.setViewName("redirect:/errors/403");
+		}
+		return mav;
+	}
+
+	/** Modify topic partitions. */
+	@RequestMapping(value = "/topic/{topicName}/{partitions}/modify", method = RequestMethod.GET)
+	public ModelAndView topicModifyPartitions(@PathVariable("topicName") String topicName, @PathVariable("partitions") int token, HttpSession session, HttpServletResponse response, HttpServletRequest request) {
+		ModelAndView mav = new ModelAndView();
+		String clusterAlias = session.getAttribute(KConstants.SessionAlias.CLUSTER_ALIAS).toString();
+		Map<String, Object> respons = brokerService.createTopicPartitions(clusterAlias, topicName, token);
+		if ("success".equals(respons.get("status"))) {
+			mav.setViewName("redirect:/topic/list");
+		} else {
 			mav.setViewName("redirect:/errors/500");
 		}
 		return mav;
@@ -404,11 +525,30 @@ public class TopicController {
 	/** Logical execute kafka sql. */
 	@RequestMapping(value = "/topic/logical/commit/", method = RequestMethod.GET)
 	public void topicSqlLogicalAjax(@RequestParam String sql, HttpSession session, HttpServletResponse response, HttpServletRequest request) {
+		TopicSqlHistory topicSql = new TopicSqlHistory();
 		try {
 			String clusterAlias = session.getAttribute(KConstants.SessionAlias.CLUSTER_ALIAS).toString();
 			String target = topicService.execute(clusterAlias, sql);
 			JSONObject result = JSON.parseObject(target);
-
+			try {
+				topicSql.setCluster(clusterAlias);
+				topicSql.setCreated(CalendarUtils.getDate());
+				topicSql.setHost(request.getRemoteAddr());
+				topicSql.setKsql(sql);
+				if (result.getBoolean("error")) {
+					topicSql.setStatus("FAILED");
+					topicSql.setSpendTime(0);
+				} else {
+					topicSql.setStatus("SUCCESSED");
+					topicSql.setSpendTime(result.getLongValue("spent"));
+				}
+				topicSql.setTm(CalendarUtils.getCustomDate("yyyyMMdd"));
+				Signiner signin = (Signiner) SecurityUtils.getSubject().getSession().getAttribute(KConstants.Login.SESSION_USER);
+				topicSql.setUsername(signin.getUsername());
+				topicService.writeTopicSqlHistory(Arrays.asList(topicSql));
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
 			byte[] output = result.toJSONString().getBytes();
 			BaseController.response(output, response);
 		} catch (Exception ex) {
@@ -462,6 +602,99 @@ public class TopicController {
 		target.put("aaData", aaDatas);
 		try {
 			byte[] output = target.toJSONString().getBytes();
+			BaseController.response(output, response);
+		} catch (Exception ex) {
+			ex.printStackTrace();
+		}
+	}
+
+	/** Get topic sql history. */
+	@RequestMapping(value = "/topic/sql/history/ajax", method = RequestMethod.GET)
+	public void topicSqlHistoryAjax(HttpServletResponse response, HttpServletRequest request) {
+		String aoData = request.getParameter("aoData");
+		JSONArray params = JSON.parseArray(aoData);
+		int sEcho = 0, iDisplayStart = 0, iDisplayLength = 0;
+		String search = "";
+		for (Object object : params) {
+			JSONObject param = (JSONObject) object;
+			if ("sEcho".equals(param.getString("name"))) {
+				sEcho = param.getIntValue("value");
+			} else if ("iDisplayStart".equals(param.getString("name"))) {
+				iDisplayStart = param.getIntValue("value");
+			} else if ("iDisplayLength".equals(param.getString("name"))) {
+				iDisplayLength = param.getIntValue("value");
+			} else if ("sSearch".equals(param.getString("name"))) {
+				search = param.getString("value");
+			}
+		}
+
+		HttpSession session = request.getSession();
+		String clusterAlias = session.getAttribute(KConstants.SessionAlias.CLUSTER_ALIAS).toString();
+
+		Signiner signin = (Signiner) SecurityUtils.getSubject().getSession().getAttribute(KConstants.Login.SESSION_USER);
+		Map<String, Object> map = new HashMap<String, Object>();
+		map.put("cluster", clusterAlias);
+		map.put("search", search);
+		map.put("username", signin.getUsername());
+		map.put("start", iDisplayStart);
+		map.put("size", iDisplayLength);
+		long count = 0L;
+		List<TopicSqlHistory> topicSqls = null;
+		if (signin.getUsername().equals(KConstants.Role.ADMIN)) {
+			topicSqls = topicService.readTopicSqlHistoryByAdmin(map);
+			count = topicService.countTopicSqlHistoryByAdmin(map);
+		} else {
+			topicSqls = topicService.readTopicSqlHistory(map);
+			count = topicService.countTopicSqlHistory(map);
+		}
+
+		JSONArray aaDatas = new JSONArray();
+		if (topicSqls != null) {
+			for (TopicSqlHistory topicSql : topicSqls) {
+				JSONObject obj = new JSONObject();
+				int id = topicSql.getId();
+				String host = topicSql.getHost();
+				String ksql = topicSql.getKsql();
+				obj.put("id", id);
+				obj.put("username", topicSql.getUsername());
+				obj.put("host", "<a href='#" + id + "/host' name='ke_sql_query_detail'>" + (host.length() > 20 ? host.substring(0, 20) + "..." : host) + "</a>");
+				obj.put("ksql", "<a href='#" + id + "/ksql' name='ke_sql_query_detail'>" + (ksql.length() > 60 ? ksql.substring(0, 60) + "..." : ksql) + "</a>");
+				if (topicSql.getStatus().equals("SUCCESSED")) {
+					obj.put("status", "<a class='btn btn-success btn-xs'>" + topicSql.getStatus() + "</a>");
+				} else {
+					obj.put("status", "<a class='btn btn-danger btn-xs'>" + topicSql.getStatus() + "</a>");
+				}
+				obj.put("spendTime", topicSql.getSpendTime() / 1000.0 + "s");
+				obj.put("created", topicSql.getCreated());
+				aaDatas.add(obj);
+			}
+		}
+		JSONObject target = new JSONObject();
+		target.put("sEcho", sEcho);
+		target.put("iTotalRecords", count);
+		target.put("iTotalDisplayRecords", count);
+		target.put("aaData", aaDatas);
+		try {
+			byte[] output = target.toJSONString().getBytes();
+			BaseController.response(output, response);
+		} catch (Exception ex) {
+			ex.printStackTrace();
+		}
+	}
+
+	/** Get ksql host or sql detail. */
+	@RequestMapping(value = "/topic/ksql/detail/{type}/{id}/ajax", method = RequestMethod.GET)
+	public void getKSqlDetailByIdAjax(@PathVariable("id") int id, @PathVariable("type") String type, HttpServletResponse response, HttpServletRequest request) {
+		try {
+			JSONObject object = new JSONObject();
+			Map<String, Object> params = new HashMap<>();
+			params.put("id", id);
+			if ("host".equals(type)) {
+				object.put("result", topicService.findTopicSqlByID(params).getHost());
+			} else if ("ksql".equals(type)) {
+				object.put("result", topicService.findTopicSqlByID(params).getKsql());
+			}
+			byte[] output = object.toJSONString().getBytes();
 			BaseController.response(output, response);
 		} catch (Exception ex) {
 			ex.printStackTrace();

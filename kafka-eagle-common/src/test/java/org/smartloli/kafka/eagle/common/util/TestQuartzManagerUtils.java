@@ -15,21 +15,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.smartloli.kafka.eagle.factory;
+package org.smartloli.kafka.eagle.common.util;
 
-import org.smartloli.kafka.eagle.api.email.MailFactory;
-import org.smartloli.kafka.eagle.api.email.MailProvider;
+import java.util.Date;
+
+import org.smartloli.kafka.eagle.common.protocol.alarm.queue.BaseJobContext;
 
 /**
- * Test Provider clazz.
+ * TODO
  * 
  * @author smartloli.
  *
- *         Created by Jan 17, 2017
+ *         Created by Oct 25, 2019
  */
-public class TestMailProvider {
+public class TestQuartzManagerUtils {
+
 	public static void main(String[] args) {
-		MailProvider provider = new MailFactory();
-		provider.create().send("test alarm", "810371213@qq.com,  1164907115@qq.com", "server is aaaaaa", "");
+		System.out.println("Send msg, date : [" + new Date().toString() + "]");
+		String jobName = "ke_job_id_" + new Date().getTime();
+		String jobName2 = "ke_job2_id_" + new Date().getTime();
+		BaseJobContext bjc = new BaseJobContext();
+		bjc.setData("test");
+		bjc.setUrl("http://www.kafka-eagle.org");
+		QuartzManagerUtils.addJob(bjc,jobName, TestJob.class, QuartzManagerUtils.getCron(new Date(), 5));
+		QuartzManagerUtils.addJob(bjc,jobName2, TestJob.class, QuartzManagerUtils.getCron(new Date(), 10));
+		// QuartzManagerUtils.addJob("ke_job_id_" + new Date().getTime(),
+		// TestJob.class, QuartzManagerUtils.getCron(new Date(), 10));
 	}
+
 }

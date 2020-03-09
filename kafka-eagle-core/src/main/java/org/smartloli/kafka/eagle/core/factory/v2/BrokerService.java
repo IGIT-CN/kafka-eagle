@@ -39,6 +39,9 @@ public interface BrokerService {
 	/** Get topic list. */
 	public List<String> topicList(String clusterAlias);
 
+	/** Get select topic list. */
+	public String topicListParams(String clusterAlias, String search);
+
 	/** Get kafka broker numbers. */
 	public long brokerNumbers(String clusterAlias);
 
@@ -54,15 +57,6 @@ public interface BrokerService {
 	/** Scan topic page display. */
 	public List<PartitionsInfo> topicRecords(String clusterAlias, Map<String, Object> params);
 
-	/** Scan partition page display. */
-	public String partitionRecords(String clusterAlias, String topic, Map<String, Object> params);
-
-	/** Get consumer topic under partition numbers. */
-	public String consumerTPNumbers(String clusterAlias, String group, String topic);
-
-	/** Scan consumer topic under partition page display. */
-	public String consumerTPRecords(String clusterAlias, String group, String topic, Map<String, Object> params);
-
 	/** Scan topic meta page display. */
 	public List<MetadataInfo> topicMetadataRecords(String clusterAlias, String topic, Map<String, Object> params);
 
@@ -71,8 +65,20 @@ public interface BrokerService {
 
 	/** Get topic real logsize records. */
 	public long getTopicRealLogSize(String clusterAlias, String topic);
-	
+
 	/** Get topic producer send logsize records. */
 	public long getTopicProducerLogSize(String clusterAlias, String topic);
+
+	/** Add topic partitions. */
+	public Map<String, Object> createTopicPartitions(String clusterAlias, String topic, int totalCount);
+
+	/** Get broker spread by topic. */
+	public int getBrokerSpreadByTopic(String clusterAlias, String topic);
+
+	/** Get broker skewed by topic. */
+	public int getBrokerSkewedByTopic(String clusterAlias, String topic);
+
+	/** Get broker leader skewed by topic. */
+	public int getBrokerLeaderSkewedByTopic(String clusterAlias, String topic);
 
 }

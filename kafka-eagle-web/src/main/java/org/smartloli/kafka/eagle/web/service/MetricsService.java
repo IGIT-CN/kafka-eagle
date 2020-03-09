@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.smartloli.kafka.eagle.common.protocol.KpiInfo;
+import org.smartloli.kafka.eagle.common.protocol.MBeanOfflineInfo;
 import org.smartloli.kafka.eagle.common.protocol.bscreen.BScreenConsumerInfo;
 import org.smartloli.kafka.eagle.common.protocol.topic.TopicOffsetsInfo;
 
@@ -39,6 +40,9 @@ public interface MetricsService {
 
 	/** Collection statistics data from kafka jmx & insert into table. */
 	public int insert(List<KpiInfo> kpi);
+
+	/** Collection statistics data from kafka jmx & insert into table. */
+	public int mbeanOfflineInsert(List<MBeanOfflineInfo> kpis);
 
 	/** Query MBean data in different dimensions. */
 	public String query(Map<String, Object> params) throws ParseException;
@@ -58,12 +62,15 @@ public interface MetricsService {
 	/** Crontab clean topic rank history data. */
 	public void cleanTopicRank(int tm);
 
+	/** Crontab clean topic sql history data. */
+	public void cleanTopicSqlHistory(int tm);
+
 	/** Crontab clean big screen topic history data. */
 	public void cleanBScreenConsumerTopic(int tm);
 
 	/** Write statistics big screen consumer topic. */
 	public int writeBSreenConsumerTopic(List<BScreenConsumerInfo> bscreenConsumers);
-	
+
 	/** Read big screen topic lastest diffval data. */
 	public BScreenConsumerInfo readBScreenLastTopic(Map<String, Object> params);
 }

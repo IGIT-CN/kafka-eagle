@@ -44,6 +44,12 @@ public interface TopicDao {
 	/** Read topic rank data. */
 	public List<TopicRank> readTopicRank(Map<String, Object> params);
 
+	/** Read topic spread, skewed, leader skewed data. */
+	public TopicRank readBrokerPerformance(Map<String, Object> params);
+
+	/** Get topic total capacity. */
+	public long getTopicCapacity(Map<String, Object> params);
+
 	/**
 	 * Write statistics topic logsize data from kafka jmx & insert into table.
 	 */
@@ -58,6 +64,9 @@ public interface TopicDao {
 	/** Get topic producer logsize chart datasets. */
 	public List<TopicLogSize> queryTopicProducerChart(Map<String, Object> params);
 
+	/** Get topic producer logsize by alarm. */
+	public List<TopicLogSize> queryTopicProducerByAlarm(Map<String, Object> params);
+
 	/** Get producer history bar data. */
 	public List<BScreenBarInfo> queryProducerHistoryBar(Map<String, Object> params);
 
@@ -67,8 +76,17 @@ public interface TopicDao {
 	/** Read topic sql history data. */
 	public List<TopicSqlHistory> readTopicSqlHistory(Map<String, Object> params);
 
+	/** Read topic sql history data by admin. */
+	public List<TopicSqlHistory> readTopicSqlHistoryByAdmin(Map<String, Object> params);
+
 	/** Count topic sql history. */
-	public long countTopicSqlHistory();
+	public long countTopicSqlHistory(Map<String, Object> params);
+
+	/** Count topic sql history by admin. */
+	public long countTopicSqlHistoryByAdmin(Map<String, Object> params);
+
+	/** Find topic sql history by id. */
+	public TopicSqlHistory findTopicSqlByID(Map<String, Object> params);
 
 	/** Crontab clean topic sql history data. */
 	public void cleanTopicSqlHistory(int tm);
@@ -92,5 +110,8 @@ public interface TopicDao {
 
 	/** Get bscreen consumer by today, such logsize offset and lag diff. */
 	public List<BScreenConsumerInfo> queryTodayBScreenConsumer(Map<String, Object> params);
+
+	/** Get lastest lag used to alarm consumer. */
+	public long queryLastestLag(Map<String, Object> params);
 
 }
